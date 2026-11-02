@@ -1,0 +1,37 @@
+---
+title: "Climdata_download"
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(ipumsr)
+library(sf)
+library(dplyr)
+
+set_ipums_api_key("59cba10d8a5da536fc06b59de0685e90a88146488981f64a8691b023", save = TRUE, overwrite=TRUE)
+ 
+# ---- Parameters -------------------------------
+state_fips   <- c(CA = "06", OR = "41", WA = "53")
+shapefile_id <- "us_blck_grp_2020_tl2020"   # 2020 block groups (TIGER/Line-based)
+download_dir <- "data"
+out_file     <- file.path(download_dir, "block_groups_ca_or_wa.gpkg")
+
+```
+
+```{r}
+extract <- define_extract_agg(
+  collection  = "nhgis",
+  description = "Block groups for CA, OR, WA (2020)",
+  shapefiles  = shapefile_id
+)
+
+
+submitted <- submit_extract(extract)
+ready <- wait_for_extract(submitted)
+zip_path <- download_extract(ready, download_dir = download_dir, overwrite = TRUE)
+
+bg <- read_ipums_sf(zip_path)
+```
+

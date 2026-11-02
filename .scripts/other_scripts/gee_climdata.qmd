@@ -1,0 +1,192 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+```{python}
+from pathlib import Path
+ 
+import ee
+import geemap
+import geopandas as gpd
+import pandas as pd
+
+PROJECT = "ee-jshannon13"      # <- change this
+GPKG = "data/nhgis_blockgroup_ca_or_wa_2020.gpkg"          # block group centroids
+LAYER = None                                          # set if the gpkg has several layers
+ID_COL = "GISJOIN"                                    # unique block group ID column
+STATES = ["CA", "OR", "WA"]
+YEAR = 2021                                           # NLCD release and imagery year
+START, END = f"{YEAR}-06-01", f"{YEAR}-09-01"         # summer window for LST/NDVI
+SAMPLE_SCALE = 30                                     # extraction scale (m)
+SAMPLE_CHUNK_SIZE = 1000                              # points per extraction request
+
+OUT = Path("data/gee_out_bg")
+(OUT / "chunks").mkdir(parents=True, exist_ok=True)
+
+try:
+    ee.Initialize(project=PROJECT)
+except Exception:
+    ee.Authenticate()
+    ee.Initialize(project=PROJECT)
+
+```
+
+
+Step 1: study region (limits the Landsat search to the three states)
+
+```{python}
+states = (
+    ee.FeatureCollection("TIGER/2018/States")
+    .filter(ee.Filter.inList("STUSPS", STATES))
+)
+region = states.geometry()
+
+```
+
+Step 2: predictor stack
+
+```{python}
+nlcd = (
+    ee.ImageCollection("USGS/NLCD_RELEASES/2021_REL/NLCD")
+    .filter(ee.Filter.eq("system:index", str(YEAR)))
+    .first()
+    .select(["landcover", "impervious"])
+    .rename(["nlcd_class", "impervious_pct"])
+)
+ 
+ 
+def mask_and_scale(img):
+    """Cloud/shadow/snow mask; scale Landsat C2 L2 SR to reflectance and ST to deg C."""
+    qa = img.select("QA_PIXEL")
+    clear = (
+        qa.bitwiseAnd(1 << 1).eq(0)        # dilated cloud
+        .And(qa.bitwiseAnd(1 << 3).eq(0))  # cloud
+        .And(qa.bitwiseAnd(1 << 4).eq(0))  # cloud shadow
+        .And(qa.bitwiseAnd(1 << 5).eq(0))  # snow
+    )
+    sr = img.select("SR_B.").multiply(0.0000275).add(-0.2)
+    lst = (
+        img.select("ST_B10").multiply(0.00341802).add(149.0).subtract(273.15)
+        .rename("lst_c")
+    )
+    return sr.addBands(lst).updateMask(clear)
+ 
+ 
+landsat = (
+    ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
+    .merge(ee.ImageCollection("LANDSAT/LC09/C02/T1_L2"))
+    .filterBounds(region)
+    .filterDate(START, END)
+    .map(mask_and_scale)
+)
+comp = landsat.median()
+ 
+ndvi = comp.normalizedDifference(["SR_B5", "SR_B4"]).rename("ndvi")
+ndbi = comp.normalizedDifference(["SR_B6", "SR_B5"]).rename("ndbi")
+ndwi = comp.normalizedDifference(["SR_B3", "SR_B5"]).rename("ndwi")
+lst = comp.select("lst_c")
+ 
+terrain = ee.Terrain.products(ee.Image("USGS/SRTMGL1_003")).select(
+    ["elevation", "slope", "aspect"]
+)
+ 
+tree_cover = (
+    ee.ImageCollection("MODIS/061/MOD44B")
+    .filterDate(f"{YEAR}-01-01", f"{YEAR}-12-31")
+    .first()
+    .select("Percent_Tree_Cover")
+    .rename("tree_cover_pct")
+)
+ 
+prism = ee.ImageCollection("OREGONSTATE/PRISM/ANm").filterDate(START, END)
+prism_tmean = prism.select("tmean").mean().rename("prism_tmean_c")
+prism_ppt = prism.select("ppt").sum().rename("prism_ppt_mm")
+ 
+stack = nlcd.addBands(
+    [ndvi, ndbi, ndwi, lst, terrain, tree_cover, prism_tmean, prism_ppt]
+)
+
+```
+
+Step 3: load block group centroids
+
+
+```{python}
+pts = gpd.read_file(GPKG)
+ 
+# Earth Engine needs lon/lat (WGS84)
+pts = pts.to_crs(4326)
+
+
+pts["lon"] = pts.geometry.x
+pts["lat"] = pts.geometry.y
+print(f"{len(pts):,} block group centroids loaded")
+print(pts.head())
+
+```
+
+Step 4: sample predictors in chunks (resumable; one CSV per chunk)
+
+
+```{python}
+
+def fc_to_df(fc):
+    feats = fc.getInfo()["features"]
+    return pd.DataFrame([f["properties"] for f in feats])
+
+n_chunks = -(-len(pts) // SAMPLE_CHUNK_SIZE)  # ceiling division
+ 
+for k, start in enumerate(range(0, len(pts), SAMPLE_CHUNK_SIZE), start=1):
+    chunk_path = OUT / "chunks" / f"samples_{start:06d}.csv"
+    if chunk_path.exists():
+        continue
+    chunk = pts.iloc[start : start + SAMPLE_CHUNK_SIZE][[ID_COL, "geometry"]]
+    samples = stack.sampleRegions(
+        collection=geemap.gdf_to_ee(chunk),   # GeoDataFrame -> ee.FeatureCollection
+        properties=[ID_COL],
+        scale=SAMPLE_SCALE,
+        tileScale=8,
+    )
+    df = fc_to_df(samples)                    # ee.FeatureCollection -> DataFrame
+    df.to_csv(chunk_path, index=False)
+    print(f"Chunk {k}/{n_chunks}: sampled {len(chunk)}, kept {len(df)}")
+```
+
+%% Step 5: merge, label, QA, save
+
+
+```{python}
+NLCD_LABELS = {
+    11: "Open water", 12: "Perennial ice/snow", 21: "Developed, open space",
+    22: "Developed, low", 23: "Developed, medium", 24: "Developed, high",
+    31: "Barren", 41: "Deciduous forest", 42: "Evergreen forest", 43: "Mixed forest",
+    52: "Shrub/scrub", 71: "Grassland", 81: "Pasture/hay", 82: "Cultivated crops",
+    90: "Woody wetlands", 95: "Herbaceous wetlands",
+}
+ 
+samples = pd.concat(
+    [pd.read_csv(p, dtype={ID_COL: str}) for p in sorted((OUT / "chunks").glob("samples_*.csv"))],
+    ignore_index=True,
+)
+# Left join keeps every block group; rows lost to cloud masking have NaN predictors
+final = pts.merge(samples, on=ID_COL, how="left")
+final["nlcd_label"] = final["nlcd_class"].map(NLCD_LABELS)
+final["developed"] = final["nlcd_class"].between(21, 24).astype("Int64").where(
+    final["nlcd_class"].notna()
+)
+ 
+missing = final["lst_c"].isna().sum()
+print(f"Block groups: {len(final):,} | missing predictors (masked/no data): {missing:,}")
+print(final["developed"].value_counts(dropna=False).rename({0: "other", 1: "developed"}))
+print(final.describe().T[["count", "mean", "min", "max"]].round(2))
+print(final.groupby("nlcd_label")[["lst_c", "ndvi", "impervious_pct"]].mean().round(2))
+ 
+final.drop(columns="geometry").to_csv(OUT / "bg_centroids_covariates.csv", index=False)
+final.to_file(OUT / "bg_centroids_covariates.gpkg", driver="GPKG")
+ 
+# Quick map check
+final.plot(column="lst_c", markersize=1, legend=True, figsize=(5, 7))
+
+```
