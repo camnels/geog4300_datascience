@@ -12,28 +12,7 @@ library(sf)
 library(tmap)
 ```
 
-
-Here's our garden data from the class video lecture
-```{r}
-med.age<-c(43, 21, 25, 42, 56, 59)
-garden<-c(99, 65, 79, 75, 87, 81)
-data<-data.frame(cbind(med.age, garden))
-```
-
-Now we can create a linear model. The actual model doesn't tell you much, but a summary of it does.
-```{r}
-lm(garden~med.age, data=data) 
-model<-lm(garden~med.age, data=data)
-summary(model)
-```
-
-You can also plot this model. The abline function plots a regression line created by the model.
-```{r}
-plot(garden~med.age, data=data)
-abline(model) 
-```
-
-Let's do a more complex model: pollen data. Does yearly mean temperature predict the levels of pollen from birch trees (Betula)? We will load the data and then make it spatial using the st_as_sf function in the sf package.
+Let's use the same data from lecture: pollen data for several stations in the U.S. Midwest. Does yearly mean temperature predict the levels of pollen from ash trees (Picea)? We will load the data and then make it spatial using the st_as_sf function in the sf package.
 
 ```{r}
 Midwest_Pollen_Data<-read_csv("data/Midwest_Pollen_Data.csv")
@@ -43,15 +22,15 @@ pollen_data_sf<-st_as_sf(Midwest_Pollen_Data,coords=c(x="longitud",y="latitude")
 
 Let's look at the distribution of these variables first.
 ```{r}
-hist(pollen_data_sf$Betula)
-ggplot(pollen_data_sf,aes(sample=Betula))+
+hist(pollen_data_sf$Picea)
+ggplot(pollen_data_sf,aes(sample=Picea))+
   stat_qq()+stat_qq_line()
 
 hist(pollen_data_sf$tmeanyr)
 ggplot(pollen_data_sf,aes(sample=tmeanyr))+
   stat_qq()+stat_qq_line()
 
-ggplot(pollen_data_sf,aes(y=Betula,x=tmeanyr))+
+ggplot(pollen_data_sf,aes(y=Picea,x=tmeanyr))+
   geom_point()
 ```
 
@@ -60,21 +39,21 @@ We can use tmap to visualize these points.
 ```{r}
 tmap_mode("view")
 tm_shape(pollen_data_sf) +
-  tm_dots("Betula",size=.2)
+  tm_dots("Picea",size=.4)
 
 tm_shape(pollen_data_sf) +
-  tm_dots("tmeanyr",size=.2)
+  tm_dots("tmeanyr",size=.4)
 ```
 
 Now let's create a model.
 ```{r}
-model<-lm(Betula~tmeanyr,data=pollen_data_sf)
+model<-lm(Picea~tmeanyr,data=pollen_data_sf)
 summary(model)
 ```
 
 We can plot out the model.
 ```{r}
-plot(Betula~tmeanyr,data=pollen_data_sf)
+plot(Picea~tmeanyr,data=pollen_data_sf)
 abline(model)
 ```
 
@@ -91,7 +70,7 @@ Create a regression model for temperature and another tree species.
 
 R comes with some diagnostic plots baked in. To see them, just plot the model. There are four screens: 
 
-1) The first is the values predicted by the model vs. the residuals. It shouldn't show a pattern.
+1) The first is the values predicted by the model vs. the residuals. It shouldn't show a pattern. This can be used to diagnose heteroskasticity.
 
 2) The second is a QQ plot for residuals. These should appear normal.
 
@@ -119,7 +98,7 @@ Map the residuals using tmap
 tmap_mode("view")
 
 tm_shape(pollen_data_sf) +
-  tm_dots("residuals",size=.2)
+  tm_dots("residuals",size=.5)
 ```
 
 #You try it!
@@ -149,7 +128,7 @@ Is your model heteroskedastic?
 ##Outliers
 We'll use Cook's Distance to assess outliers This is adapted from: http://r-statistics.co/Outlier-Treatment-With-R.html See also https://onlinecourses.science.psu.edu/stat501/node/340 and http://www.statisticshowto.com/cooks-distance/.
 
-In th example below, we plot the Cooke's distance for each observation, which shows the leverage it has in the model as a whole. We then add a cutoff line that shows values four times greater than the mean. Lastly, we add labels that give the row number of each identified outlier.
+In th example below, we plot the Cook's distance for each observation, which shows the leverage it has in the model as a whole. We then add a cutoff line that shows values four times greater than the mean. Lastly, we add labels that give the row number of each identified outlier.
 
 ```{r}
 cooks_dist<-data.frame(cooks=cooks.distance(model),x=1:nrow(pollen_data_sf))
@@ -172,15 +151,21 @@ pollen_data_sf_cooks<-pollen_data_sf %>%
 Where do those outliers fit in the overall distribution?
 
 ```{r}
-ggplot(pollen_data_sf_cooks,aes(y=Betula,x=tmeanyr,color=outlier))+
-  geom_point()
+ggplot(pollen_data_sf_cooks,aes(y=Picea,x=tmeanyr,color=outlier))+
+  geom_point()+
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = F,
+    color = "black"
+  ) 
 ```
 
 **Where** are these outliers? We can map it out.
 
 ```{r}
 tm_shape(pollen_data_sf_cooks) +
-  tm_dots("outlier",size=0.2)
+  tm_dots("outlier",size=0.5)
 ```
 
 Let's run a model without the outliers to see if anything significant changes.
@@ -188,10 +173,11 @@ Let's run a model without the outliers to see if anything significant changes.
 ```{r}
 pollen_data_sf1<-pollen_data_sf_cooks %>%
   filter(outlier==0)
-model_rev<-lm(Betula~tmeanyr,data=pollen_data_sf1)
+model_rev<-lm(Picea~tmeanyr,data=pollen_data_sf1)
 summary(model_rev)
 
-plot(Betula~tmeanyr,data=pollen_data_sf1)
+plot(Picea~tmeanyr,data=pollen_data_sf1)
+abline(model)
 abline(model_rev)
 ```
 

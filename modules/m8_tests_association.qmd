@@ -29,8 +29,7 @@ format: html
 
 ### Slides for class
 * [L15: Correlation and writing about numbers](https://github.com/communitymaplab/geog4300_datascience/raw/refs/heads/main/in_class_slides/geog4300_L15%20Correlation.pptx){target="_blank"}
-* [L16: Univariate regression](https://github.com/communitymaplab/geog4300_datascience/raw/refs/heads/main/in_class_slides/geog4300_L16%20Univariate%20regression.pptx){target="_blank"}
-* [L17: Multivariate regression and test review](https://github.com/communitymaplab/geog4300_datascience/raw/refs/heads/main/in_class_slides/geog4300_L17%20Test%20review;%20Multivariate%20regression.pptx){target="_blank"}
+* [L16: Univariate regression](https://github.com/communitymaplab/geog4300_datascience/raw/refs/heads/main/in_class_slides/geog4300_L16%20OLS%20regression.pptx){target="_blank"}
 
 ## Additional Resources {.module-section}
 

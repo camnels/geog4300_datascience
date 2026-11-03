@@ -31,7 +31,7 @@ dlsf<-read_csv("data/DLSF_data.csv") %>%
 
 tmap_mode("view")
 tm_shape(dlsf)+
-  tm_bubbles(col="AvgDLSpF")
+  tm_bubbles(fill="AvgDLSpF",size=0.5)
 ```
 
 Now we can do univariate regression for each variable.
@@ -94,7 +94,7 @@ cutoff<-mean(cooks_dist$cooks)*4
 
 dlsf_outliers<-dlsf %>%
   bind_cols(cooks_dist) %>%
-  mutate(outlier=if_else(cooks>cutoff,1,0)) 
+  mutate(outlier=if_else(cooks>cutoff,"1","0")) 
 
 tm_shape(dlsf_outliers) +
   tm_dots("outlier")
