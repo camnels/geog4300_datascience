@@ -62,7 +62,6 @@ Go back to our census data (ACSCtyData_2022_ACS). What's the most normal variabl
 
 ```{r}
 acsdata<-read_csv("data/ACSCtyData_2022ACS.csv")
-
-
+shapiro.test(acsdata$intnet_all_pop) 
 ```
 

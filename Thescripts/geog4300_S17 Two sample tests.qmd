@@ -110,16 +110,24 @@ wed<-c(10.7, 11.1, 16.2, 12.5, 10.8, 16.7, 12.7)
 Assume the data is normal. Run the appropriate t.test and then interpret the results. State which test you used, describe your results, and interpret what they tell you about a difference between these two days.
 
 ```{r}
-#Code here
+t.test(mon, wed, paired=TRUE) 
+
+#pvalue .34 means 34% chance they have the same mean 
+#confidence includes zero so it could be that 
+#not significant 
 ```
 
 2) Motorists in two cities were surveyed about whether or not they carpooled when driving to work. In the first city, 398 motorists out of 985 answered yes. In the second, 445 of 912 did. Is there a difference in rates between these cities? State which test you used, describe your results, and interpret what they tell you about a difference between these cities.
 
 ```{r}
 #Code here
+
+yes = c(398,445)
+ppl = c(985,912)
+
+prop.test(yes,ppl)
+
 ```
-
-
 
 ## Wilcoxon tests
 The wilcox.test command does both non-parametric Wilcoxon tests (the version of a t-test suitable for data that isn't normally distributed). Here's the rank sum example using lecture data. Think about what the null hypothesis is here. What does a significant p-value tell you?
