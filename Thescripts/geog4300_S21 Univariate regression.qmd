@@ -38,7 +38,7 @@ Let's do a more complex model: pollen data. Does yearly mean temperature predict
 ```{r}
 Midwest_Pollen_Data<-read_csv("data/Midwest_Pollen_Data.csv")
 
-pollen_data_sf<-st_as_sf(Midwest_Pollen_Data,coords=c(x="longitud",y="latitude"),crs=4326)
+pollen_data_sf<-st_as_sf(Midwest_Pollen_Data,coords=c(x="longitude",y="latitude"),crs=4326)
 ```
 
 Let's look at the distribution of these variables first.
